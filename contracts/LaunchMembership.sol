@@ -3,31 +3,32 @@ pragma solidity ^0.8.17;
 
 import "@thirdweb-dev/contracts/base/ERC721Base.sol";
 import "@thirdweb-dev/contracts/extension/PermissionsEnumerable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title ClubMembership
  * @dev A contract for club membership NFTs with role-based permissions
  */
-contract LaunchMembership is ERC721Base, PermissionsEnumerable {
+contract LaunchMembershipV3 is ERC721Base, PermissionsEnumerable {
     // Club information
     string public clubName;
     string public clubDescription;
     string public clubImageURI;
-    string[] public clubTags;
     uint256 public membershipLimit;
     uint256 public membershipPrice;
     address public clubCreator;
     uint256 public totalMembers;
+    IERC20 public paymentToken; // Reference to the $GROW token
     
     // Role definitions
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant MODERATOR_ROLE = keccak256("MODERATOR_ROLE");
-    
     // Events
     event MembershipPurchased(address indexed member, uint256 tokenId);
     event ClubInfoUpdated(string newName, string newDescription, string newImageURI);
     event MembershipPriceUpdated(uint256 newPrice);
     event MembershipLimitUpdated(uint256 newLimit);
+    event PaymentTokenUpdated(address newToken);
     
     /**
      * @dev Constructor to initialize the club membership contract
@@ -36,11 +37,11 @@ contract LaunchMembership is ERC721Base, PermissionsEnumerable {
         string memory _clubName,
         string memory _clubDescription,
         string memory _clubImageURI,
-        string[] memory _clubTags,
         uint256 _membershipLimit,
         uint256 _membershipPrice,
         string memory _nftName,
-        string memory _nftSymbol
+        string memory _nftSymbol,
+        address _paymentToken // Address of the $GROW token
     ) 
         ERC721Base(
             msg.sender,
@@ -53,11 +54,11 @@ contract LaunchMembership is ERC721Base, PermissionsEnumerable {
         clubName = _clubName;
         clubDescription = _clubDescription;
         clubImageURI = _clubImageURI;
-        clubTags = _clubTags;
         membershipLimit = _membershipLimit;
         membershipPrice = _membershipPrice;
         clubCreator = msg.sender;
         totalMembers = 0;
+        paymentToken = IERC20(_paymentToken); // Initialize the payment token
         
         // Set up roles
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -65,21 +66,19 @@ contract LaunchMembership is ERC721Base, PermissionsEnumerable {
     }
     
     /**
-     * @dev Purchase a membership NFT
+     * @dev Purchase a membership NFT using $GROW tokens
      */
-    function purchaseMembership() external payable returns (uint256) {
+    function purchaseMembership() external returns (uint256) {
         require(totalMembers < membershipLimit, "Membership limit reached");
-        require(msg.value >= membershipPrice, "Insufficient payment");
+        
+        // Transfer $GROW tokens from buyer to contract
+        require(paymentToken.transferFrom(msg.sender, address(this), membershipPrice), 
+                "Token transfer failed");
         
         // Mint the membership NFT
         uint256 tokenId = totalMembers + 1;
-        _safeMint(msg.sender, 1);
+        _safeMint(msg.sender, tokenId);
         totalMembers += 1;
-        
-        // Refund excess payment if any
-        if (msg.value > membershipPrice) {
-            payable(msg.sender).transfer(msg.value - membershipPrice);
-        }
         
         emit MembershipPurchased(msg.sender, tokenId);
         return tokenId;
@@ -139,25 +138,29 @@ contract LaunchMembership is ERC721Base, PermissionsEnumerable {
     }
     
     /**
-     * @dev Withdraw funds from the contract (admin only)
+     * @dev Update payment token (admin only)
      */
-    function withdraw() external onlyRole(ADMIN_ROLE) {
+    function updatePaymentToken(address _newToken) external onlyRole(ADMIN_ROLE) {
+        paymentToken = IERC20(_newToken);
+        emit PaymentTokenUpdated(_newToken);
+    }
+    
+    /**
+     * @dev Withdraw ERC20 tokens from the contract (admin only)
+     */
+    function withdrawTokens() external onlyRole(ADMIN_ROLE) {
+        uint256 balance = paymentToken.balanceOf(address(this));
+        require(balance > 0, "No tokens to withdraw");
+        require(paymentToken.transfer(clubCreator, balance), "Token transfer failed");
+    }
+    
+    /**
+     * @dev Withdraw any ETH that might have been sent to the contract (admin only)
+     * This is kept for safety, in case ETH is accidentally sent to the contract
+     */
+    function withdrawETH() external onlyRole(ADMIN_ROLE) {
         uint256 balance = address(this).balance;
-        require(balance > 0, "No funds to withdraw");
+        require(balance > 0, "No ETH to withdraw");
         payable(clubCreator).transfer(balance);
-    }
-    
-    /**
-     * @dev Get club tags
-     */
-    function getClubTags() external view returns (string[] memory) {
-        return clubTags;
-    }
-    
-    /**
-     * @dev Update club tags (admin only)
-     */
-    function updateClubTags(string[] memory _newTags) external onlyRole(ADMIN_ROLE) {
-        clubTags = _newTags;
     }
 }
