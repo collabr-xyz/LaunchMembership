@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @title LaunchMembershipV4
  * @dev An enhanced contract for club membership NFTs with better validation and logging
  */
-contract LaunchMembershipV4 is ERC721Base, PermissionsEnumerable {
+contract LaunchMembershipV5 is ERC721Base, PermissionsEnumerable {
     // Club information
     string public clubName;
     string public clubDescription;
@@ -19,6 +19,10 @@ contract LaunchMembershipV4 is ERC721Base, PermissionsEnumerable {
     address public clubCreator;
     uint256 public totalMembers;
     IERC20 public paymentToken; // Reference to the $GROW token
+    
+    // Staking related variables
+    uint256 public totalStakedTokens;
+    mapping(address => uint256) public stakedTokensByMember;
     
     // Role definitions
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -32,6 +36,8 @@ contract LaunchMembershipV4 is ERC721Base, PermissionsEnumerable {
     event PaymentTokenUpdated(address oldToken, address newToken);
     event TokensWithdrawn(uint256 amount, address to);
     event ETHWithdrawn(uint256 amount, address to);
+    event TokensStaked(address indexed member, uint256 amount);
+    event TokensUnstaked(address indexed member, uint256 amount);
     
     /**
      * @dev Constructor to initialize the club membership contract
@@ -66,6 +72,7 @@ contract LaunchMembershipV4 is ERC721Base, PermissionsEnumerable {
         membershipPrice = _membershipPrice;
         clubCreator = msg.sender;
         totalMembers = 0;
+        totalStakedTokens = 0;
         paymentToken = IERC20(_paymentToken);
         
         // Set up roles
@@ -94,7 +101,13 @@ contract LaunchMembershipV4 is ERC721Base, PermissionsEnumerable {
         _safeMint(msg.sender, tokenId);
         totalMembers += 1;
         
+        // Record the membership payment as staked tokens
+        stakedTokensByMember[msg.sender] = membershipPrice;
+        totalStakedTokens += membershipPrice;
+        
         emit MembershipPurchased(msg.sender, tokenId, membershipPrice);
+        emit TokensStaked(msg.sender, membershipPrice);
+        
         return tokenId;
     }
     
@@ -103,6 +116,59 @@ contract LaunchMembershipV4 is ERC721Base, PermissionsEnumerable {
      */
     function isMember(address _address) public view returns (bool) {
         return balanceOf(_address) > 0;
+    }
+    
+    /**
+     * @dev Stake additional tokens to the community
+     * @param _amount The amount of tokens to stake
+     */
+    function stakeTokens(uint256 _amount) external {
+        require(isMember(msg.sender), "Must be a member to stake");
+        require(_amount > 0, "Must stake more than 0 tokens");
+        
+        // Transfer tokens from staker to contract
+        bool transferSuccess = paymentToken.transferFrom(msg.sender, address(this), _amount);
+        require(transferSuccess, "Token transfer failed");
+        
+        // Update staking records
+        stakedTokensByMember[msg.sender] += _amount;
+        totalStakedTokens += _amount;
+        
+        emit TokensStaked(msg.sender, _amount);
+    }
+    
+    /**
+     * @dev Unstake tokens from the community
+     * @param _amount The amount of tokens to unstake
+     */
+    function unstakeTokens(uint256 _amount) external {
+        require(isMember(msg.sender), "Must be a member to unstake");
+        require(_amount > 0, "Must unstake more than 0 tokens");
+        require(stakedTokensByMember[msg.sender] >= _amount, "Not enough staked tokens");
+        
+        // Ensure the user maintains at least the membership price staked
+        require(
+            stakedTokensByMember[msg.sender] - _amount >= membershipPrice,
+            "Must maintain minimum membership stake"
+        );
+        
+        // Update staking records
+        stakedTokensByMember[msg.sender] -= _amount;
+        totalStakedTokens -= _amount;
+        
+        // Transfer tokens back to the user
+        bool transferSuccess = paymentToken.transfer(msg.sender, _amount);
+        require(transferSuccess, "Token transfer failed");
+        
+        emit TokensUnstaked(msg.sender, _amount);
+    }
+    
+    /**
+     * @dev Get the amount of tokens staked by a member
+     * @param _member The address of the member
+     */
+    function getStakedTokens(address _member) external view returns (uint256) {
+        return stakedTokensByMember[_member];
     }
     
     /**
@@ -166,13 +232,16 @@ contract LaunchMembershipV4 is ERC721Base, PermissionsEnumerable {
     }
     
     /**
-     * @dev Withdraw ERC20 tokens from the contract (admin only)
+     * @dev Withdraw excess ERC20 tokens from the contract (admin only)
+     * @dev Only tokens beyond what is staked can be withdrawn
      */
     function withdrawTokens() external onlyRole(ADMIN_ROLE) {
-        uint256 balance = paymentToken.balanceOf(address(this));
-        require(balance > 0, "No tokens to withdraw");
-        require(paymentToken.transfer(clubCreator, balance), "Token transfer failed");
-        emit TokensWithdrawn(balance, clubCreator);
+        uint256 contractBalance = paymentToken.balanceOf(address(this));
+        uint256 excessTokens = contractBalance - totalStakedTokens;
+        require(excessTokens > 0, "No excess tokens to withdraw");
+        
+        require(paymentToken.transfer(clubCreator, excessTokens), "Token transfer failed");
+        emit TokensWithdrawn(excessTokens, clubCreator);
     }
     
     /**
