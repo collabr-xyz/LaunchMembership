@@ -4,12 +4,13 @@ pragma solidity ^0.8.17;
 import "@thirdweb-dev/contracts/base/ERC721Base.sol";
 import "@thirdweb-dev/contracts/extension/PermissionsEnumerable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/Base64.sol"; // Added Base64 for encoding
 
 /**
- * @title LaunchMembershipV4
+ * @title LaunchMembershipV6
  * @dev An enhanced contract for club membership NFTs with better validation and logging
  */
-contract LaunchMembershipV5 is ERC721Base, PermissionsEnumerable {
+contract LaunchMembershipV6 is ERC721Base, PermissionsEnumerable {
     // Club information
     string public clubName;
     string public clubDescription;
@@ -81,6 +82,52 @@ contract LaunchMembershipV5 is ERC721Base, PermissionsEnumerable {
         
         // Log initial price for transparency
         emit MembershipPriceUpdated(0, _membershipPrice);
+    }
+    
+    /**
+     * @dev Helper function to convert uint256 to string
+     */
+    function toString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
+    }
+    
+    /**
+     * @dev Override tokenURI to generate on-chain metadata with clubImageURI
+     */
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(_exists(tokenId), "URI query for nonexistent token");
+        
+        // Generate JSON metadata with clubImageURI as the image
+        return string(abi.encodePacked(
+            "data:application/json;base64,",
+            Base64.encode(
+                bytes(
+                    string(
+                        abi.encodePacked(
+                            '{"name":"', clubName, ' Membership #', toString(tokenId), '",',
+                            '"description":"', clubDescription, '",',
+                            '"image":"', clubImageURI, '",',
+                            '"attributes":[{"trait_type":"Club","value":"', clubName, '"}]}'
+                        )
+                    )
+                )
+            )
+        ));
     }
     
     /**

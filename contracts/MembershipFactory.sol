@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-// Importing LaunchMembership.sol which contains the LaunchMembershipV5 contract
+// Importing LaunchMembership.sol which contains the LaunchMembershipV6 contract
 import "./LaunchMembership.sol";
 
 /**
  * @title MembershipFactory
  * @dev Factory contract to deploy new membership contracts
  */
-contract MembershipFactoryV2 {
+contract MembershipFactoryV3 {
     // Mapping to track the last contract deployed by each creator
     mapping(address => address) public lastDeployedContract;
     
@@ -43,8 +43,8 @@ contract MembershipFactoryV2 {
         require(_membershipLimit > 0, "Membership limit must be greater than 0");
         require(_paymentToken != address(0), "Payment token cannot be zero address");
         
-        // Deploy a new LaunchMembershipV5 contract
-        LaunchMembershipV5 newContract = new LaunchMembershipV5(
+        // Deploy a new LaunchMembershipV6 contract
+        LaunchMembershipV6 newContract = new LaunchMembershipV6(
             _clubName,
             _clubDescription,
             _clubImageURI,
@@ -104,7 +104,7 @@ contract MembershipFactoryV2 {
         // First, count how many contracts were deployed by this creator
         for (uint256 i = 0; i < deployedContracts.length; i++) {
             address contractAddr = deployedContracts[i];
-            LaunchMembershipV5 membership = LaunchMembershipV5(contractAddr);
+            LaunchMembershipV6 membership = LaunchMembershipV6(contractAddr);
             if (membership.clubCreator() == _creator) {
                 count++;
             }
@@ -117,7 +117,7 @@ contract MembershipFactoryV2 {
         // Fill the array with contracts deployed by this creator
         for (uint256 i = 0; i < deployedContracts.length; i++) {
             address contractAddr = deployedContracts[i];
-            LaunchMembershipV5 membership = LaunchMembershipV5(contractAddr);
+            LaunchMembershipV6 membership = LaunchMembershipV6(contractAddr);
             if (membership.clubCreator() == _creator) {
                 creatorContracts[index] = contractAddr;
                 index++;
