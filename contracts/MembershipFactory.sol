@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-// Importing LaunchMembership.sol which contains the LaunchMembershipV6 contract
+// Importing LaunchMembership.sol which contains the LaunchMembershipV7 contract
 import "./LaunchMembership.sol";
 
 /**
  * @title MembershipFactory
  * @dev Factory contract to deploy new membership contracts
+ * @notice V4 is compatible with LaunchMembershipV7 which stores tokens for the host to claim
  */
-contract MembershipFactoryV3 {
+contract MembershipFactoryV4 {
     // Mapping to track the last contract deployed by each creator
     mapping(address => address) public lastDeployedContract;
     
@@ -27,6 +28,7 @@ contract MembershipFactoryV3 {
     /**
      * @dev Deploy a new membership contract with all parameters properly set
      * @param _membershipPrice IMPORTANT: Must be in token units with 18 decimals (e.g. 2 tokens = 2000000000000000000)
+     * @notice When members purchase a membership, tokens are stored in the contract and can be claimed by the club creator
      */
     function deployMembershipContract(
         string memory _clubName,
@@ -43,8 +45,8 @@ contract MembershipFactoryV3 {
         require(_membershipLimit > 0, "Membership limit must be greater than 0");
         require(_paymentToken != address(0), "Payment token cannot be zero address");
         
-        // Deploy a new LaunchMembershipV6 contract
-        LaunchMembershipV6 newContract = new LaunchMembershipV6(
+        // Deploy a new LaunchMembershipV7 contract
+        LaunchMembershipV7 newContract = new LaunchMembershipV7(
             _clubName,
             _clubDescription,
             _clubImageURI,
@@ -104,7 +106,7 @@ contract MembershipFactoryV3 {
         // First, count how many contracts were deployed by this creator
         for (uint256 i = 0; i < deployedContracts.length; i++) {
             address contractAddr = deployedContracts[i];
-            LaunchMembershipV6 membership = LaunchMembershipV6(contractAddr);
+            LaunchMembershipV7 membership = LaunchMembershipV7(contractAddr);
             if (membership.clubCreator() == _creator) {
                 count++;
             }
@@ -117,7 +119,7 @@ contract MembershipFactoryV3 {
         // Fill the array with contracts deployed by this creator
         for (uint256 i = 0; i < deployedContracts.length; i++) {
             address contractAddr = deployedContracts[i];
-            LaunchMembershipV6 membership = LaunchMembershipV6(contractAddr);
+            LaunchMembershipV7 membership = LaunchMembershipV7(contractAddr);
             if (membership.clubCreator() == _creator) {
                 creatorContracts[index] = contractAddr;
                 index++;
